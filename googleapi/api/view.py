@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -9,6 +10,8 @@ from googleapi.models import *
 from googleapi.api.serializers import *
 from datetime import datetime
 
+from google.oauth2 import id_token
+from google.auth.transport import requests
 class UserAccessRecordListAPIView(APIView):
     def get(self,request,email):
         userAccessRecord = get_list_or_404(UserAccessRecord, email=email)
@@ -17,7 +20,11 @@ class UserAccessRecordListAPIView(APIView):
 
 class UserAccessRecordAPIView(APIView):
     def _checkVaildToken(self,request):
-        # request.data["email"], request.data["access_token"]
+        req = requests.Request()
+        id_info = id_token.verify_oauth2_token(
+            request.data["id_token"], req, os.getenv('GOOGLE_CLIEND_ID'))
+        if id_info["iss"] != "accounts.google.com" or id_info["email"] != request.data["email"]:
+            return False
         return True
     def _updateGoogleSheet(self,request):
         return True
