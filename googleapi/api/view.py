@@ -1,17 +1,25 @@
 import os
+from pathlib import Path
+import httplib2
+
 from datetime import datetime
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import get_list_or_404, get_object_or_404
+import logging
 
 from googleapi.models import *
 from googleapi.api.serializers import *
 from datetime import datetime
 
-from google.oauth2 import id_token
+from google.oauth2 import id_token,service_account
 from google.auth.transport import requests
+from apiclient import discovery
+
+logger = logging.getLogger(__name__)
+
 class UserAccessRecordListAPIView(APIView):
     def get(self,request,email):
         userAccessRecord = get_list_or_404(UserAccessRecord, email=email)
@@ -19,6 +27,32 @@ class UserAccessRecordListAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class UserAccessRecordAPIView(APIView):
+    scopes = ["https://www.googleapis.com/auth/drive",
+              "https://www.googleapis.com/auth/drive.file",
+              "https://www.googleapis.com/auth/spreadsheets"]
+    secretFile = os.path.join(os.getcwd(), "env", os.getenv(
+                "GOOGLE_SERVICES_ACCOUNT_FILENAME"))
+    credentials = service_account.Credentials.from_service_account_file(
+        secretFile, scopes=scopes)
+    service = discovery.build("sheets", "v4", credentials=credentials)
+    spreadsheetID = os.getenv("GOOGLE_SPREADSHEET_ID")
+    spreatSheetColumnNumber = {
+        "EmailAddress": 2,
+        "ChineseName":8,
+        "FirstName":9,
+        "LasstName":10,
+        "NickName":11,
+        "WechatID":13,
+        "TShirtSIze":14,
+        "DietaryRestriction":15,
+        "ReimbursementMethod":16,
+        "ReimbursementAccountType":17,
+        "ReimbursementAccountEmail":18,
+        "ReimbursementAccountPhoneNumber":19,
+        "Phone Number":23,
+        "Zgid":32,
+        "ZgidEmail":33
+    }
     def _checkVaildToken(self,request):
         req = requests.Request()
         id_info = id_token.verify_oauth2_token(
@@ -26,10 +60,47 @@ class UserAccessRecordAPIView(APIView):
         if id_info["iss"] != "accounts.google.com" or id_info["email"] != request.data["email"]:
             return False
         return True
+    def _getGoogleSheetRowNumberFromEmail(self,request):
+        ranges = [
+            "Form Responses 1!B:B",
+            "Form Responses 1!AG:AG"
+        ]
+        serviceRequest = self.service.spreadsheets().values().batchGet(
+            spreadsheetId=self.spreadsheetID, ranges=ranges, majorDimension='COLUMNS')
+        try:
+            response = serviceRequest.execute()
+        except Exception as e:
+            logger.error(e)
+            return -1
+        userEmail:str = request.data["email"]
+        rowList:list
+        if userEmail.endswith("@zgzg.io"):
+            rowList = response["valueRanges"][1]["values"][0]
+        else:
+            rowList = response["valueRanges"][0]["values"][0]
+            map(str.lower,rowList)
+        return rowList.index(userEmail)+1 if userEmail in rowList else -1
     def _updateGoogleSheet(self,request):
         return True
     def _getGoogleSheetData(self,request):
-        return True
+        ret = {"returnCode": -1}
+        rowNumber = self._getGoogleSheetRowNumberFromEmail(request)
+        if rowNumber < 1:
+            return ret
+        range = "Form Responses 1!A{}:ZZ{}".format(rowNumber,rowNumber)
+        serviceRequest = self.service.spreadsheets().values().get(
+            spreadsheetId=self.spreadsheetID, range=range)
+        try:
+            response = serviceRequest.execute()
+        except Exception as e:
+            logger.error(e)
+            return ret
+        responseValues = response["values"][0]
+        if responseValues[1] == request.data["email"] or responseValues[-1] == request.data["email"]:
+            ret["returnCode"] = 1
+            for key in self.spreatSheetColumnNumber:
+                ret[key] = responseValues[self.spreatSheetColumnNumber[key]-1]
+        return ret
     def get(self, request):
         userAccessRecord = UserAccessRecord.objects.all()
         serializer = UserAccessRecordSerializer(userAccessRecord, many=True)
@@ -44,7 +115,7 @@ class UserAccessRecordAPIView(APIView):
             if self._checkVaildToken(request):
                 if "SheetData" in request.data:
                     self._updateGoogleSheet(request)
-                self._getGoogleSheetData(request)
-                return Response({"test": "this is test data"}, status=status.HTTP_201_CREATED)
+                ret = self._getGoogleSheetData(request)
+                return Response(ret, status=status.HTTP_201_CREATED)
             return Response(status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializers.errors,status=status.HTTP_400_BAD_REQUEST)
