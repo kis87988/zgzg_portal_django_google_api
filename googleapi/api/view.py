@@ -37,21 +37,21 @@ class UserAccessRecordAPIView(APIView):
     service = discovery.build("sheets", "v4", credentials=credentials)
     spreadsheetID = os.getenv("GOOGLE_SPREADSHEET_ID")
     spreatSheetColumnNumber = {
-        "EmailAddress": 2,
-        "ChineseName":8,
-        "FirstName":9,
-        "LasstName":10,
-        "NickName":11,
-        "WechatID":13,
-        "TShirtSIze":14,
-        "DietaryRestriction":15,
-        "ReimbursementMethod":16,
-        "ReimbursementAccountType":17,
-        "ReimbursementAccountEmail":18,
-        "ReimbursementAccountPhoneNumber":19,
-        "Phone Number":23,
-        "Zgid":32,
-        "ZgidEmail":33
+        "EmailAddress": {"colnumNumber": 2, "updateable": False},
+        "ChineseName": {"colnumNumber": 8, "updateable": False},
+        "FirstName": {"colnumNumber": 9, "updateable": False},
+        "LastName": {"colnumNumber": 10, "updateable": False},
+        "NickName": {"colnumNumber": 11, "updateable": False},
+        "WechatID": {"colnumNumber": 13, "updateable": False},
+        "TShirtSize": {"colnumNumber": 14, "updateable": False},
+        "DietaryRestriction": {"colnumNumber": 15, "updateable": False},
+        "ReimbursementMethod": {"colnumNumber": 16, "updateable": True},
+        "ReimbursementAccountType": {"colnumNumber": 17, "updateable": True},
+        "ReimbursementAccountEmail": {"colnumNumber": 18, "updateable": True},
+        "ReimbursementAccountPhoneNumber": {"colnumNumber": 19, "updateable": True},
+        "PhoneNumber": {"colnumNumber": 23, "updateable": True},
+        "Zgid": {"colnumNumber": 32, "updateable": False},
+        "ZgidEmail": {"colnumNumber": 33, "updateable": False}
     }
     def _checkVaildToken(self,request):
         req = requests.Request()
@@ -81,15 +81,49 @@ class UserAccessRecordAPIView(APIView):
             map(str.lower,rowList)
         return rowList.index(userEmail)+1 if userEmail in rowList else -1
     def _updateGoogleSheet(self,request):
+        ret = {"returnCode": -1}
+        rowNumber = self._getGoogleSheetRowNumberFromEmail(request)
+        if rowNumber < 1:
+            return ret
+        range_ = "Form Responses 1!A{}:ZZ{}".format(rowNumber, rowNumber)
+        valueInputOption = "RAW"
+        values = []
+        serviceRequest = self.service.spreadsheets().values().get(
+            spreadsheetId=self.spreadsheetID, range=range_)
+        try:
+                response = serviceRequest.execute()
+        except Exception as e:
+            logger.error(e)
+            return ret
+        responseValues = response["values"][0]
+        try:
+            for key in self.spreatSheetColumnNumber:
+                if self.spreatSheetColumnNumber[key]["updateable"]:
+                    responseValues[self.spreatSheetColumnNumber[key]
+                                ["colnumNumber"]-1] = request.data["data"][key]  
+        except Exception as e:
+            print(e, self.spreatSheetColumnNumber[key]
+                  ["colnumNumber"]-1, len(responseValues))
+        serviceRequest = self.service.spreadsheets().values().update(spreadsheetId=self.spreadsheetID, range="Form Responses 1!A{}:ZZ{}".format(rowNumber, rowNumber), 
+         valueInputOption=valueInputOption, 
+         body={
+             "values": [responseValues]
+         })
+
+        try:
+            response = serviceRequest.execute()
+        except Exception as e:
+            logger.error(e)
+            return False   
         return True
     def _getGoogleSheetData(self,request):
         ret = {"returnCode": -1}
         rowNumber = self._getGoogleSheetRowNumberFromEmail(request)
         if rowNumber < 1:
             return ret
-        range = "Form Responses 1!A{}:ZZ{}".format(rowNumber,rowNumber)
+        range_ = "Form Responses 1!A{}:ZZ{}".format(rowNumber,rowNumber)
         serviceRequest = self.service.spreadsheets().values().get(
-            spreadsheetId=self.spreadsheetID, range=range)
+            spreadsheetId=self.spreadsheetID, range=range_)
         try:
             response = serviceRequest.execute()
         except Exception as e:
@@ -99,7 +133,8 @@ class UserAccessRecordAPIView(APIView):
         if responseValues[1] == request.data["email"] or responseValues[-1] == request.data["email"]:
             ret["returnCode"] = 1
             for key in self.spreatSheetColumnNumber:
-                ret[key] = responseValues[self.spreatSheetColumnNumber[key]-1]
+                ret[key] = responseValues[self.spreatSheetColumnNumber[key]
+                                          ["colnumNumber"]-1]
         return ret
     def get(self, request):
         userAccessRecord = UserAccessRecord.objects.all()
@@ -107,15 +142,36 @@ class UserAccessRecordAPIView(APIView):
         return Response(serializer.data,status=status.HTTP_200_OK)
     def post(self, request):
         request.data["record_time"] = datetime.now()
-        if "SheetData" in request.data:
-            request.data["action"] = "update profile"
+        request.data["action"] = "View"
+
         serializers = UserAccessRecordSerializer(data = request.data)
         if serializers.is_valid():
-            serializers.save()
+            serializers.save()  
             if self._checkVaildToken(request):
-                if "SheetData" in request.data:
-                    self._updateGoogleSheet(request)
                 ret = self._getGoogleSheetData(request)
                 return Response(ret, status=status.HTTP_201_CREATED)
             return Response(status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializers.errors,status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request):
+        request.data["record_time"] = datetime.now()
+        tokenVaild = self._checkVaildToken(request)
+        request.data["action"] = "Unauthorized to update profile"
+
+        if tokenVaild:
+            request.data["action"] = "Update profile: "
+            ret = self._getGoogleSheetData(request)
+            for key in ret:
+                if ret[key] != request.data["data"][key]:
+                    request.data["action"] += "{} from {} to {},".format(
+                        key, ret[key], request.data["data"][key])
+            self._updateGoogleSheet(request)
+
+        serializers = UserAccessRecordSerializer(data = request.data)
+        if serializers.is_valid():
+            serializers.save()
+            if tokenVaild:
+                ret = self._getGoogleSheetData(request)
+                return Response(ret, status=status.HTTP_200_OK)
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
+        return Response(serializers.errors, status=status.HTTP_400_BAD_REQUEST)
