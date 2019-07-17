@@ -33,11 +33,11 @@ class UserAccessRecordAPIView(APIView):
               "https://www.googleapis.com/auth/drive.file",
               "https://www.googleapis.com/auth/spreadsheets"]
     secretFile = os.path.join(os.getcwd(), "env", os.getenv(
-        "GOOGLE_SERVICES_ACCOUNT_FILENAME"))
+        "DJANGO_GOOGLE_SERVICES_ACCOUNT_FILENAME"))
     credentials = service_account.Credentials.from_service_account_file(
         secretFile, scopes=scopes)
     service = discovery.build("sheets", "v4", credentials=credentials)
-    spreadsheetID = os.getenv("GOOGLE_SPREADSHEET_ID")
+    spreadsheetID = os.getenv("DJANGO_GOOGLE_SPREADSHEET_ID")
     spreatSheetColumnNumber = {
         "EmailAddress": {"colnumNumber": 2, "updateable": False},
         "ChineseName": {"colnumNumber": 8, "updateable": False},
@@ -59,7 +59,7 @@ class UserAccessRecordAPIView(APIView):
     def _checkVaildToken(self, request):
         req = requests.Request()
         id_info = id_token.verify_oauth2_token(
-            request.data["id_token"], req, os.getenv('GOOGLE_CLIEND_ID'))
+            request.data["id_token"], req, os.getenv('DJANGO_GOOGLE_CLIEND_ID'))
         if id_info["iss"] != "accounts.google.com" or id_info["email"] != request.data["email"]:
             return False
         return True
