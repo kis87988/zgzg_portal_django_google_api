@@ -105,7 +105,7 @@ class UserAccessRecordAPIView(APIView):
             for key in self.spreatSheetColumnNumber:
                 if self.spreatSheetColumnNumber[key]["updateable"]:
                     responseValues[self.spreatSheetColumnNumber[key]
-                                   ["colnumNumber"]-1] = request.data["data"][key]
+                                   ["colnumNumber"]-1] = str(request.data["data"][key])
         except Exception as e:
             print(e, self.spreatSheetColumnNumber[key]
                   ["colnumNumber"]-1, len(responseValues))
