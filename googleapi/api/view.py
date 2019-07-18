@@ -157,7 +157,8 @@ class UserAccessRecordAPIView(APIView):
             serializers.save()
             if self._checkVaildToken(request):
                 ret = self._getGoogleSheetData(request)
-                return Response(ret, status=status.HTTP_201_CREATED)
+                status_ = status.HTTP_201_CREATED if ret["returnCode"] == 1 else status.HTTP_404_NOT_FOUND
+                return Response(ret, status=status_)
             return Response(status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializers.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -180,6 +181,7 @@ class UserAccessRecordAPIView(APIView):
             serializers.save()
             if tokenVaild:
                 ret = self._getGoogleSheetData(request)
-                return Response(ret, status=status.HTTP_200_OK)
+                status_ = status.HTTP_201_CREATED if ret["returnCode"] == 1 else status.HTTP_404_NOT_FOUND
+                return Response(ret, status=status_)
             return Response(status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializers.errors, status=status.HTTP_400_BAD_REQUEST)
