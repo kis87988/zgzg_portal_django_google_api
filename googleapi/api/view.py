@@ -38,6 +38,7 @@ class UserAccessRecordAPIView(APIView):
         secretFile, scopes=scopes)
     service = discovery.build("sheets", "v4", credentials=credentials)
     spreadsheetID = os.getenv("DJANGO_GOOGLE_SPREADSHEET_ID")
+    spreatsheetName = "UserInfoForPortal"
     spreatSheetColumnNumber = {
         "EmailAddress": {"colnumNumber": 2, "updateable": False},
         "ChineseName": {"colnumNumber": 8, "updateable": False},
@@ -66,8 +67,8 @@ class UserAccessRecordAPIView(APIView):
 
     def _getGoogleSheetRowNumberFromEmail(self, request):
         ranges = [
-            "Form Responses 1!B:B",
-            "Form Responses 1!AG:AG"
+            f"{self.spreatsheetName}!B:B",
+            f"{self.spreatsheetName}!AG:AG"
         ]
         serviceRequest = self.service.spreadsheets().values().batchGet(
             spreadsheetId=self.spreadsheetID, ranges=ranges, majorDimension='COLUMNS')
@@ -90,7 +91,7 @@ class UserAccessRecordAPIView(APIView):
         rowNumber = self._getGoogleSheetRowNumberFromEmail(request)
         if rowNumber < 1:
             return ret
-        range_ = "Form Responses 1!A{}:ZZ{}".format(rowNumber, rowNumber)
+        range_ = f"{self.spreatsheetName}!A{rowNumber}:ZZ{rowNumber}"
         valueInputOption = "RAW"
         values = []
         serviceRequest = self.service.spreadsheets().values().get(
@@ -109,11 +110,13 @@ class UserAccessRecordAPIView(APIView):
         except Exception as e:
             print(e, self.spreatSheetColumnNumber[key]
                   ["colnumNumber"]-1, len(responseValues))
-        serviceRequest = self.service.spreadsheets().values().update(spreadsheetId=self.spreadsheetID, range="Form Responses 1!A{}:ZZ{}".format(rowNumber, rowNumber),
-                                                                     valueInputOption=valueInputOption,
-                                                                     body={
-            "values": [responseValues]
-        })
+        serviceRequest = self.service.spreadsheets().values().update(
+            spreadsheetId=self.spreadsheetID, 
+            range=f"{self.spreatsheetName}!A{rowNumber}:ZZ{rowNumber}",
+            valueInputOption=valueInputOption,
+            body={
+                "values": [responseValues]
+            })
 
         try:
             response = serviceRequest.execute()
@@ -127,7 +130,7 @@ class UserAccessRecordAPIView(APIView):
         rowNumber = self._getGoogleSheetRowNumberFromEmail(request)
         if rowNumber < 1:
             return ret
-        range_ = "Form Responses 1!A{}:ZZ{}".format(rowNumber, rowNumber)
+        range_ = f"{self.spreatsheetName}!A{rowNumber}:ZZ{rowNumber}"
         serviceRequest = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheetID, range=range_)
         try:
@@ -136,7 +139,9 @@ class UserAccessRecordAPIView(APIView):
             logger.error(e)
             return ret
         responseValues = response["values"][0]
-        if responseValues[1] == request.data["email"] or responseValues[-1] == request.data["email"]:
+        PersonEmail = responseValues[self.spreatSheetColumnNumber["EmailAddress"]["colnumNumber"]-1]
+        ZgidEmail = responseValues[self.spreatSheetColumnNumber["ZgidEmail"]["colnumNumber"]-1]
+        if PersonEmail == request.data["email"] or ZgidEmail == request.data["email"]:
             ret["returnCode"] = 1
             for key in self.spreatSheetColumnNumber:
                 ret[key] = responseValues[self.spreatSheetColumnNumber[key]
@@ -172,8 +177,7 @@ class UserAccessRecordAPIView(APIView):
             ret = self._getGoogleSheetData(request)
             for key in ret:
                 if ret[key] != request.data["data"][key]:
-                    request.data["action"] += "{} from {} to {},".format(
-                        key, ret[key], request.data["data"][key])
+                    request.data["action"] += f"{key} from {ret[key]} to {request.data['data'][key]},"
             self._updateGoogleSheet(request)
 
         serializers = UserAccessRecordSerializer(data=request.data)
