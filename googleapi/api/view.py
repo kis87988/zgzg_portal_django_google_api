@@ -54,7 +54,8 @@ class UserAccessRecordAPIView(APIView):
         "ReimbursementAccountPhoneNumber": {"colnumNumber": 19, "updateable": True},
         "PhoneNumber": {"colnumNumber": 23, "updateable": True},
         "Zgid": {"colnumNumber": 32, "updateable": False},
-        "ZgidEmail": {"colnumNumber": 33, "updateable": False}
+        "ZgidEmail": {"colnumNumber": 33, "updateable": False},
+        "PromoCode2020": {"colnumNumber": 34, "updateable": False}
     }
 
     def _checkVaildToken(self, request):
