@@ -10,7 +10,7 @@ django-cors-headers==3.0.2
 django-dotenv==1.4.2
 django-filter==2.1.0
 django-guardian==2.0.0
-djangorestframework==3.9.4
+djangorestframework==3.11.2
 djongo==1.2.33
 dnspython==1.16.0
 google-api-python-client==1.7.9
